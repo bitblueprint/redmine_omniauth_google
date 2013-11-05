@@ -19,6 +19,7 @@ class RedmineOauthController < AccountController
       redirect_to signin_path
     else
       token = oauth_client.auth_code.get_token(params[:code], :redirect_uri => oauth_google_callback_url)
+      save_token token
       result = token.get('https://www.googleapis.com/oauth2/v1/userinfo')
       info = JSON.parse(result.body)
       if info && info["verified_email"]
@@ -36,9 +37,9 @@ class RedmineOauthController < AccountController
   end
 
   def try_to_login info
-   params[:back_url] = session[:back_url]
-   session.delete(:back_url)
-   user = User.find_or_initialize_by_mail(info["email"])
+    params[:back_url] = session[:back_url]
+    session.delete(:back_url)
+    user = User.find_or_initialize_by_mail(info["email"])
     if user.new_record?
       # Self-registration off
       redirect_to(home_url) && return unless Setting.self_registration?
@@ -78,9 +79,9 @@ class RedmineOauthController < AccountController
 
   def oauth_client
     @client ||= OAuth2::Client.new(settings[:client_id], settings[:client_secret],
-      :site => 'https://accounts.google.com',
-      :authorize_url => '/o/oauth2/auth',
-      :token_url => '/o/oauth2/token')
+                                   :site => 'https://accounts.google.com',
+                                   :authorize_url => '/o/oauth2/auth',
+                                   :token_url => '/o/oauth2/token')
   end
 
   def settings
@@ -88,6 +89,18 @@ class RedmineOauthController < AccountController
   end
 
   def scopes
-    'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+    [
+     'https://www.googleapis.com/auth/userinfo.email', 
+     'https://www.googleapis.com/auth/userinfo.profile',
+     'https://www.googleapis.com/auth/calendar'
+    ].join(' ')
+  end
+
+  private
+
+  def save_token token
+    session[:google_auth_token] = token.token
+    session[:google_auth_refresh_token] = token.refresh_token
+    session[:google_auth_expires_at] = Time.at token.expires_at
   end
 end
